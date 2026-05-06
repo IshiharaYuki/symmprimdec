@@ -1,0 +1,617 @@
+///////////////////////////////////////////////////////////////////////////////
+version="version symmprimdec.lib 4.4.0.0 May_2026 "; // $Id$
+category="Commutative Algebra";
+info="
+LIBRARY:  symmprimdec.lib       primary decompositions of symmetric ideals
+
+AUTHORS:  Y. Ishihara     ishihara.yuki@nihon-u.ac.jp
+
+OVERVIEW:
+  A library for computing a primary decomposition of a symmetric ideal.
+
+REFERENCES:
+
+PROCEDURES:
+  symmprimdecSYC(I);    a minimal primary decomposition of a symmetric ideal I
+  newSymmprimdecSYC(I); a minimal primary decomposition of a symmetric ideal I by using semi-symmetric saturation techniques
+  primdecSYC(I);       a minimal primary decomposition of an ideal I based on Simoyama-Yokoyama with Colon Ideals
+  separators(L);        a list of separators of a list of ideals L
+  findSeparator(L,N);  a separator of a list of ideals L with respect to the N-th ideal
+  saturatedSeparating(I,Q); a saturated separating ideal of I with respect to Q
+  misLocal(I,U);       a localization of I with respect to a maximal independent set U
+  symmMisLocal(I,U);   a localization of I with respect to a maximal independent set U by semi-symmetric saturation
+  permIdeal(I,sigma);  a permutation of the variables of I with respect to a permutation sigma
+  orbitDecom(L,sigma); a list of orbits of a list of ideals L with respect to a permutation sigma
+  isSubideal(I,J);    check if I is a subset of J or not
+  delete_slack(I,N);  delete the slack variables of I with respect to the N-th variable
+  symmMaxIdeal(I,sigma); a symmetric maximum ideal of I with respect to a permutation sigma
+  isSymmetricSigma(I,sigma); check if I is a symmetric ideal with respect to a permutation sigma
+  permOrder(sigma);    compute the order of a permutation sigma
+  symmIntersect(I,J,sigma); a symmetric intersection of I and J with respect to a permutation sigma using symmStd from symodstd.lib
+  symmSatPoly(I,f,sigma); a symmetric saturation of a symmetric ideal I with respect to a symmetric polynomial f and a permutation sigma using symmStd from symodstd.lib
+  semiSymmSatPoly(I,f,sigma); a symmetric saturation of an ideal I with respect to a polynomial f and a permutation sigma by semi-symmetric saturation using symmStd from symodstd.lib
+  stdSat(I,f);       a saturation of an ideal I with respect to a polynomial f using std from primdec.lib
+";
+
+LIB "elim.lib";
+LIB "dmodloc.lib";
+LIB "primdec.lib";
+LIB "symodstd.lib";
+LIB "sets.lib";
+
+proc symmprimdecSYC (def I, def sigma, int #)
+"USAGE:   symmprimdecSYC(I,sigma, #); I:ideal/module, sigma:list, #:int (#==1:use semiSymmSatPoly, #!=1:use sat)
+RETURN:   a minimal primary decomposition of I
+NOTE:     The procedure computes primary components of I by using techniques for symmetric ideals. 
+SEE ALSO: primdec.lib
+EXAMPLE:  example symmprimdecSYC; shows an example"
+{
+    int i,j,k;
+    ideal Istd;
+    /* compute primary decomposition of the radical of I */
+    ideal rad = radical(I);
+    list primedec = primdecSY(rad);
+    int d = size(primedec);
+    list primeDivisors;
+    for (i = 1; i <= d; i++)
+    {
+        primeDivisors = primeDivisors + list(primedec[i][1]); 
+    }
+    list orbits = orbitDecom (primeDivisors,sigma);
+
+    /* compute the pseudo-components  of I */
+    list seps = separators (primeDivisors);
+    ideal pseudoPrimary;
+    ideal pseudoPrimarys = 1;
+    ideal primary;
+    ideal remaining;
+    ideal remaining2 = I;
+    ideal permPrimary;
+    ideal permPseudoPrimary;
+    ideal hm;
+    list pseudoSat;
+    list pseudoComponents;
+    list primaryComponents;
+    list orbit;
+    list pd;
+    list extract;
+    intvec mis;
+    intvec tau;
+    intvec unit = 1..size(sigma);
+    
+    for (i = 1; i <= size(orbits); i++)
+    {
+        orbit = orbits[i];
+        if (size(orbit) == 1)
+        {
+            if (# == 1)
+            {
+                pseudoPrimary = semiSymmSatPoly(I,seps[orbit[1]],sigma);
+            }
+            else
+            {
+                pseudoPrimary = sat(I,seps[orbit[1]]);
+            }
+        }
+        else
+        {
+            pseudoPrimary = sat(I,seps[orbit[1]]);
+        }
+        pseudoPrimarys = intersect(pseudoPrimarys, pseudoPrimary);
+        if (size(orbit) == 1)
+        {
+            if(!attrib(pseudoPrimary,"isSB")){print("compute std");pseudoPrimary = std(pseudoPrimary);}
+            mis = indepSet(pseudoPrimary);
+            if (# == 1)
+            {
+                primary = misLocal(pseudoPrimary,mis,sigma);
+            }
+            else
+            {
+                primary = misLocal(pseudoPrimary,mis);
+            }
+            primaryComponents = primaryComponents + list(primary);
+            permPrimary = primary;
+            permPseudoPrimary = pseudoPrimary;
+            for (j = 2; j <= size(orbit); j++)
+            {
+                permPrimary = permIdeal(permPrimary,sigma);
+                primaryComponents = primaryComponents + list(permPrimary);
+            }
+            remaining = pseudoPrimary + symmMaxIdeal (saturatedSeparating(pseudoPrimary, primary), sigma);
+            remaining = std (remaining);
+            if (remaining != 1){
+                primaryComponents = primaryComponents + symmprimdecSYC(remaining, sigma, #);
+            }
+        }
+        else
+        {
+            pd = primdecSYC(pseudoPrimary);
+            for (j=1; j <= size(pd); j++)
+            {
+                tau = unit;
+                for (k=1; k <= permOrder(sigma); k++)
+                {
+                    primaryComponents = primaryComponents + list(permIdeal(pd[j],tau));
+                    tau = Symodstd::permute(sigma,tau);
+                    if (tau == unit){break;}
+                }   
+            }
+        }
+    }
+    pseudoPrimarys = symmMaxIdeal (pseudoPrimarys, sigma);
+    remaining = I + symmMaxIdeal (saturatedSeparating (I, pseudoPrimarys), sigma);
+    if (remaining != 1){
+        primaryComponents = primaryComponents + symmprimdecSYC(remaining, sigma, #);
+    }
+    return(primaryComponents);
+}
+example
+{
+    "EXAMPLE:";
+    echo=2;
+    ring r=0,(x,y,z),dp;
+    ideal i = x+y+z,xy+yz+zx,xyz-1;
+    intvec sigma = 3,1,2;
+    symmprimdecSYC (i,sigma);
+}
+
+proc newSymmprimdecSYC (def I, def sigma)
+"USAGE:   newSymmprimdecSYC(I,sigma); I:ideal/module, sigma:list
+RETURN:   a minimal primary decomposition of I
+NOTE:     The procedure computes primary components of I by using semi-symmetric saturation techniques for symmetric ideals. 
+SEE ALSO: symmprimdecSYC, primdecSYC
+EXAMPLE:  example newSymmprimdecSYC; shows an example"
+{
+    return(symmprimdecSYC(I,sigma,1));
+}
+example
+{
+    "EXAMPLE:";
+    echo=2;
+    ring r=0,(x,y,z),dp;
+    ideal i = x+y+z,xy+yz+zx,xyz-1;
+    intvec sigma = 3,1,2;
+    newSymmprimdecSYC(i,sigma);
+}
+
+proc primdecSYC (def I)
+"USAGE:   primdecSYC(I); I ideal/module
+RETURN:   a minimal primary decomposition of I
+NOTE:     The procedure computes primary components of I by Simoyama-Yokoyama with Colon Ideals. 
+SEE ALSO: primdec.lib
+EXAMPLE:  example symmprimdec; shows an example"
+{
+    int i;
+    /* compute primary decomposition of the radical of I */
+    list primedec = primdecSY(radical(I));
+    int d = size(primedec);
+    list primeDivisors;
+    for (i = 1; i <= d; i++)
+    {
+        primeDivisors = primeDivisors + list(primedec[i][1]); 
+    }
+
+    /* compute the pseudo-components  of I */
+    list seps = separators (primeDivisors);
+    ideal pseudoPrimary;
+    ideal pseudoPrimarys = 1;
+    ideal primary;
+    ideal remaining;
+    ideal remaining2 = I;
+    list pseudoSat;
+    list pseudoComponents;
+    list primaryComponents;
+    intvec mis;
+    list extract;
+    ideal hm;
+    for (i = 1; i <= d; i++)
+    {
+        pseudoSat = sat_with_exp(I,seps[i]);
+        pseudoPrimary = pseudoSat[1];
+        pseudoPrimarys = intersect(pseudoPrimarys, pseudoPrimary);
+        pseudoComponents = pseudoComponents + list(pseudoPrimary);
+        mis = indepSet(pseudoPrimary);
+        primary = misLocal(pseudoPrimary,mis);
+        primaryComponents = primaryComponents + list(primary);
+        remaining = pseudoPrimary + saturatedSeparating(pseudoPrimary,primary);
+        remaining = std (remaining);
+        if (remaining != 1){
+            primaryComponents = primaryComponents + primdecSYC(remaining);
+        }
+    }
+    remaining = I + saturatedSeparating(I,pseudoPrimarys);
+    if (remaining != 1){
+        primaryComponents = primaryComponents + primdecSYC(remaining);
+    }
+    return(primaryComponents);
+}
+example
+{
+    "EXAMPLE:";
+    echo=2;
+    ring r=0,(x,y,z),dp;
+    ideal i=x+y+z,xy+yz+zx,xyz-1;
+    primdecSYC(i);
+}
+
+/* compute the separators of a list of ideals */
+proc separators(def L)
+{
+    int i;
+    list systemOfSeparators;
+    for (i=1; i<=size(L); i++)
+    {
+        systemOfSeparators = systemOfSeparators + list(findSeparator (L,i));
+    }
+    return(systemOfSeparators);
+}
+
+/* find a separator of a list of ideals with respect to the N-th ideal */
+proc findSeparator(def L, def N)
+{
+    int i;
+    int j;
+    poly f = 1;
+    def G = std(L[N]);
+    for (i=1; i<=size(L); i++){
+        if (i != N){
+            for (j=1; j<=size(L[i]); j++){
+                if (reduce(L[i][j], G, 1) != 0){
+                    f = f * L[i][j];
+                    break;
+                }
+            }
+        }
+    }
+    return(f);
+}
+
+/* compute the saturated separating ideal of I with respect to Q */
+proc saturatedSeparating(def I, def Q, intvec #){
+    ideal IQ = quotient(I,Q);
+    if (IQ == 1){
+        return(ideal(1));
+    }
+    ideal G = radical(IQ);
+    ideal RI = std(radical(I));
+    list G_new;
+    int i;
+    int j;
+    for (i=1; i <= size(G); i++)
+    {
+        if (reduce(G[i],RI,1) != 0){
+            G_new = G_new + list(G[i]);
+        }
+    }
+    ideal J = 0;
+    ideal E;
+    ideal JF;
+    int index;
+    if (# != 0)
+    {
+        intvec sigma = #;
+    }
+    
+    for (i = 1; i <= size(G_new); i++){
+        index = 0;
+        E = 1;
+        if (# == 0)
+        {
+            while (!isSubideal(E,I))
+            {
+                index = index + 1;
+                E = intersect(Q,G_new[i]^index + I + J);
+            }
+            J = J + G_new[i]^index;
+        }
+        else
+        {
+            index = 1;
+            counter = 1;
+            while (!isSubideal(E,I)){
+                E = symmIntersect(Q,G_new[i]^index + I + J, sigma);
+                index = index + 1;
+            }
+            J = J + genSymId (G_new[i]^index + I + JF, sigma);
+        }
+    }
+    return(J);
+}
+
+/* compute the localization of I with respect to a maximal independent set U  */
+proc misLocal (def I, def U, intvec #)
+{
+    if (U == 0){return (I);}
+    int j = 1;
+    int k;
+    list Vars;
+    Vars[1] = list();
+    Vars[2] = list();
+    intvec v1;
+    intvec v2;
+    for (k = 1; k <= size(U); k++)
+    {
+        if (U[k] == 0){
+            Vars[1] = Vars[1] + list(var(k));
+            if (v1 == 0){v1 = 1;}else{v1 = v1,1;}
+        }
+        else
+        {
+            Vars[2] = Vars[2] + list(var(k));
+            if (v2 == 0){v2 = 1;}else{v2 = v2,1;}
+        }
+    }
+    def br = basering;
+    list lbr = ringlist(br);
+    lbr[2] = Vars[1] + Vars[2];
+    lbr[3]  = list(list("dp",v1),list("dp",v2),list("C",0));
+    def nr = ring(lbr);
+    setring(nr);
+    ideal In = imap(br,I);
+    In = std(In);
+    intvec v = size(v1)+1..size(v1)+size(v2);
+    def R = vars2pars(v);
+    setring R;
+    ideal Iq = imap(nr,In);
+    number h = 1;
+    for (k = 1; k <= size(Iq); k++)
+    {
+        h = h * leadcoef(Iq[k]);
+    }
+    setring br;
+    ideal H = imap(R,h);
+    H = radical(H);
+    if (# != 0)
+    {
+        ideal G = semiSymmSatPoly(I,H[1],#);
+    }
+    else
+    {
+        ideal G = sat(I,H);
+    }
+    return(G);
+}
+
+/* compute the localization of I with respect to a maximal independent set U by semi-symmetric saturation */
+proc symmMisLocal (def I, def U, intvec sigma)
+{
+    return(misLocal(I,U,sigma));
+}
+
+/* permute the variables of I with respect to a permutation sigma */
+proc permIdeal (def I, def sigma)
+{
+    int i;
+    ideal perm;
+    for(i = 1; i <= size(sigma); i++)
+    {
+        perm = perm + var(sigma[i]);
+    }
+    map f = basering, perm;
+    return (f(I));
+}
+
+/* compute the orbits of a list of ideals with respect to a permutation sigma */
+proc orbitDecom (def L, def sigma)
+{
+    int d = size (L);
+    int i;
+    int j = 1;
+    intvec flag = 1..d;
+    list l;
+    ideal primeDivisor;
+    ideal permPrimeDivisor;
+    list Lstd;
+    for (i = 1; i <= d; i++)
+    {
+        Lstd[i] = std(L[i]);
+    }
+    list orbit;
+    for (i = 1; i <= d; i++)
+    {
+        if (flag[i] !=0 )
+        {
+            orbit = i; 
+            primeDivisor = Lstd[i];
+            permPrimeDivisor = permIdeal (primeDivisor,sigma);
+            while (j <= d)
+            {
+                if (isSubideal(permPrimeDivisor,primeDivisor)){break;}
+                if (flag[j] != 0)
+                {
+                    if (isSubideal(permPrimeDivisor,Lstd[j]))
+                    {
+                        if (isSubideal(Lstd[j],permPrimeDivisor))
+                        {
+                            orbit = orbit + list(j);
+                            flag[j] = 0;
+                            permPrimeDivisor = permIdeal (permPrimeDivisor,sigma);
+                            j = 1;
+                        }
+                    }
+                }
+                j = j + 1;
+            }
+            l = l + list(orbit);
+        }
+    }
+    return(l);
+}
+
+/* check if I is a subset of J or not */
+proc isSubideal (def I, def J)
+{
+    if(!attrib(J,"isSB")){print("compute std");J = std(J);}
+    int i;
+    for (i = ncols(I); i > 0; i--)
+    {
+        if (reduce(I[i], J, 1) != 0) {return(0);}
+    }
+    return(1);
+}
+
+/* delete the slack variables of I with respect to the N-th variable */
+proc delete_slack (def I, def N)
+{
+    int i;
+    poly H;
+    ideal L = 0;
+    for (i = 1; i <= size(I); i++)
+    {
+        H = I[i];
+        if (subst(lead(H),var(N),0) == lead(H)) 
+        {
+            if (subst(H,var(N),0) == H)
+            {
+                L = L + ideal(H);
+            }
+        }
+    }
+    return(L);
+}
+
+/* compute the symmetric maximum ideal of I with respect to a permutation sigma */
+proc symmMaxIdeal (def I, def sigma)
+{
+    int i;
+    ideal permI = I;
+    ideal symmI = 1;
+    while (1)
+    {
+        symmI = intersect(symmI, permI);
+        permI = permIdeal (permI, sigma);
+        if (isSubideal (permI, I)){break;}
+    }
+    return(symmI);
+}
+
+/* check if I is a symmetric ideal with respect to a permutation sigma */
+proc isSymmetricSigma (def I, def sigma)
+{
+    if (isSubideal (permIdeal(I, sigma),I)){return(1);}
+    return(0);
+}
+
+/* compute the order of a permutation sigma */
+proc permOrder (def sigma)
+{
+    int i;
+    int order = 1;
+    intvec unit = 1..size(sigma);
+    intvec tau = unit;
+    for (i = 1; i <= factorial(size(sigma)); i++){
+        tau = Symodstd::permute(sigma,tau);
+        if (tau == unit){break;}
+        order = order + 1;
+    }
+    return(order);
+}
+
+/* compute the symmetric intersection of I and J with respect to a permutation sigma */
+proc symmIntersect (I,J,sigma)
+{
+    int i;
+    def br = basering;
+    list lbr = ringlist(br);
+    lbr[2] = list("slack_t") + lbr[2];
+    lbr[3]  = list(list("dp",1),list("dp",nvars(br)),list("C",0));
+    def nr = ring(lbr);
+    setring(nr);
+    intvec sigma_new = 1,sigma;
+    for (i = 2; i <= size (sigma_new); i++)
+    {
+        sigma_new[i] = sigma_new[i] + 1;
+    }
+    ideal In = imap(br,I);
+    ideal Jn = imap(br,J);
+    ideal H = genSymId (slack_t*In + (1-slack_t)*Jn, sigma_new);
+    ideal Gt = symmStd (H, sigma_new);
+    ideal Gt_new;
+    for (i = 1; i <= size(Gt); i++)
+    {
+        if (subst(Gt[i],var(1),0) == Gt[i])
+        {
+            Gt_new = Gt_new + Gt[i];
+        }
+    }
+    setring (br);
+    ideal G = imap(nr,Gt_new);
+    return (G);
+}
+
+/* compute the symmetric saturation of a symmetric ideal I with respect to a symmetric polynomial f and a permutation sigma */
+proc symmSatPoly (def I, poly f, intvec sigma, #)
+{
+    int i;
+    ideal symmI = genSymId (I, sigma);
+    poly fsigma = f;
+    poly g = f;
+    if (# == 1)
+    {
+        fsigma = symmMaxIdeal(ideal(f),sigma)[1];
+    }
+    else
+    {
+        fsigma = f;
+    }
+    def br = basering;
+    list lbr = ringlist(br);
+    lbr[2] = list("slack_t") + lbr[2];
+    lbr[3]  = list(list("dp",1),list("dp",nvars(br)),list("C",0));
+    def nr = ring(lbr);
+    setring(nr);
+    intvec sigma_new = 1,sigma;
+    for (i = 2; i <= size (sigma_new); i++)
+    {
+        sigma_new[i] = sigma_new[i] + 1;
+    }
+    ideal In = imap(br,I);
+    ideal fsigman = imap(br,fsigma);
+    ideal H = genSymId (In + ideal(1 - slack_t * fsigman), sigma_new);
+    ideal Gt = symmStd (H, sigma_new);
+    ideal Gt_new;
+    for (i = 1; i <= size(Gt); i++)
+    {
+        if (subst(Gt[i],var(1),0) == Gt[i])
+        {
+            Gt_new = Gt_new + Gt[i];
+        }
+    }
+    setring (br);
+    ideal G = imap(nr,Gt_new);
+    return (G);
+}
+
+/* compute the symmetric saturation of an ideal I with respect to a polynomial f and a permutation sigma by semi-symmetric saturation */
+proc semiSymmSatPoly (def I, poly f, intvec sigma)
+{
+    return(symmSatPoly(I,f,sigma,1));
+}
+
+/* compute the saturation of an ideal I with respect to a polynomial f */
+proc stdSat (def I, poly f)
+{
+    int i;
+    def br = basering;
+    list lbr = ringlist(br);
+    lbr[2] = list("slack_t") + lbr[2];
+    lbr[3]  = list(list("dp",1),list("dp",nvars(br)),list("C",0));
+    def nr = ring(lbr);
+    setring(nr);
+    ideal In = imap(br,I);
+    ideal fn = imap(br,f);
+    ideal H = In + ideal(1 - slack_t * fn);
+    ideal Gt = std (H);
+    ideal Gt_new;
+    for (i = 1; i <= size(Gt); i++)
+    {
+        if (subst(Gt[i],var(1),0) == Gt[i])
+        {
+            Gt_new = Gt_new + Gt[i];
+        }
+    }
+    setring (br);
+    ideal G = imap(nr,Gt_new);
+    return (G);
+}
