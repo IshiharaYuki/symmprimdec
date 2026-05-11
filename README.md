@@ -1,4 +1,4 @@
-# symmprimdec_open.lib README
+# symmprimdec.lib README
 
 `symmprimdec.lib` is a Singular library for computing **primary decompositions of symmetric ideals**.  
 It provides primary decomposition methods that exploit variable permutation symmetry, including semi-symmetric saturation techniques.
